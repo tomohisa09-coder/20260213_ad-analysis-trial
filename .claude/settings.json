@@ -1,0 +1,13 @@
+{
+  "model": "sonnet",
+  "permissions": {
+    "allow": [
+      "Git",
+      "Bash",
+      "Npm",
+      "Python",
+      "Mcp__notion"
+    ]
+  }
+}
+
