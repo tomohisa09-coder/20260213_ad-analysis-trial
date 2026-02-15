@@ -19,9 +19,45 @@ from analysis_engine import (
     generate_cost_matrix,
     generate_daily_trend,
 )
-from claude_client import run_analysis, MODEL_MAP
+from claude_client import run_analysis
 
 load_dotenv()
+
+
+# ── 認証設定 ────────────────────────────────────────────
+def _get_secret(key: str, fallback_env: bool = True) -> str:
+    """Streamlit Secrets → .env → 空文字 の順で取得"""
+    try:
+        return st.secrets[key]
+    except (KeyError, FileNotFoundError):
+        return os.getenv(key, "") if fallback_env else ""
+
+
+def check_password() -> bool:
+    """パスワード認証。正しければTrueを返す。"""
+    password = _get_secret("APP_PASSWORD")
+    if not password:
+        # パスワード未設定 = ローカル開発環境なのでスキップ
+        return True
+
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if st.session_state["authenticated"]:
+        return True
+
+    st.title("🔐 ログイン")
+    st.caption("このアプリは社内限定です。パスワードを入力してください。")
+    pwd_input = st.text_input("パスワード", type="password", key="pwd_input")
+
+    if st.button("ログイン", type="primary"):
+        if pwd_input == password:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("パスワードが間違っています")
+
+    return False
 
 # ── ページ設定 ────────────────────────────────────────
 st.set_page_config(
@@ -30,28 +66,27 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── パスワード認証 ────────────────────────────────────
+if not check_password():
+    st.stop()
+
 st.title("📊 動画広告クリエイティブ × パフォーマンス分析")
 st.caption("Gemini手動JSON + Excel → Claude API → レポート自動生成")
 
-# ── サイドバー: API設定 ──────────────────────────────────
-with st.sidebar:
-    st.header("⚙️ 設定")
-    api_key = st.text_input(
-        "Claude API Key",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
-        type="password",
-        help="Anthropic Console で取得したAPIキーを入力",
-    )
-    model_choice = st.selectbox("分析モデル", list(MODEL_MAP.keys()))
+# ── APIキー取得（Secrets / .env から自動） ─────────────────
+api_key = _get_secret("ANTHROPIC_API_KEY")
 
-    st.divider()
-    st.markdown("**使い方**")
+# ── サイドバー ──────────────────────────────────────────
+with st.sidebar:
+    st.header("📖 使い方")
     st.markdown(
         "1. Excelをアップロード\n"
         "2. JSONをアップロード\n"
         "3. 広告名とJSONを紐付け\n"
         "4. 「分析開始」を押す"
     )
+    st.divider()
+    st.caption("Powered by Claude API (Sonnet 4.5)")
 
 # ── Step 1: ファイルアップロード ──────────────────────────
 st.header("Step 1: データアップロード")
@@ -204,13 +239,12 @@ if excel_file and json_files:
         kpi_text = build_kpi_text(summary)
         creative_json_for_api = [cr for cr in creatives if cr["video_id"] in mapping.values()]
 
-        with st.spinner(f"🧠 {model_choice} で分析中...（30秒〜1分ほどかかります）"):
+        with st.spinner("🧠 Claude API で分析中...（30秒〜1分ほどかかります）"):
             try:
                 report = run_analysis(
                     api_key=api_key,
                     kpi_summary_text=kpi_text,
                     creative_jsons=creative_json_for_api,
-                    model_label=model_choice,
                 )
                 st.session_state["report"] = report
             except Exception as e:
