@@ -34,7 +34,12 @@ def run_analysis(
     json_text_parts = []
     for cr in creative_jsons:
         raw = cr.get("_raw_json", cr)
-        json_text_parts.append(json.dumps(raw, ensure_ascii=False, indent=2))
+        part = json.dumps(raw, ensure_ascii=False, indent=2)
+        # 定性テキストがあれば追加
+        qual = cr.get("_qualitative_text", "")
+        if qual:
+            part += f"\n\n### 定性分析（専門家レビュー）\n{qual}"
+        json_text_parts.append(part)
     creative_json_text = "\n\n---\n\n".join(json_text_parts)
 
     # プロンプト組み立て

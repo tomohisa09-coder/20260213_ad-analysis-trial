@@ -12,6 +12,7 @@ import os
 from analysis_engine import (
     process_excel,
     parse_creative_jsons,
+    parse_creative_md,
     build_summary,
     build_kpi_text,
     generate_kpi_chart,
@@ -80,9 +81,9 @@ api_key = _get_secret("ANTHROPIC_API_KEY")
 with st.sidebar:
     st.header("📖 使い方")
     st.markdown(
-        "1. Excelをアップロード\n"
-        "2. JSONをアップロード\n"
-        "3. 広告名とJSONを紐付け\n"
+        "1. Excelをドラッグ＆ドロップ\n"
+        "2. JSON or MDをドラッグ＆ドロップ\n"
+        "3. 広告名とクリエイティブを紐付け\n"
         "4. 「分析開始」を押す"
     )
     st.divider()
@@ -96,22 +97,22 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("📄 パフォーマンスデータ")
     excel_file = st.file_uploader(
-        "Meta広告のExcel/CSVをアップロード",
+        "ここにExcel/CSVをドラッグ＆ドロップ",
         type=["xlsx", "xls", "csv"],
         key="excel",
     )
 
 with col2:
-    st.subheader("🎬 クリエイティブ分析JSON")
-    json_files = st.file_uploader(
-        "Geminiで生成したJSONをアップロード（複数可）",
-        type=["json"],
+    st.subheader("🎬 クリエイティブ分析")
+    creative_files = st.file_uploader(
+        "ここにJSON or MDをドラッグ＆ドロップ（複数可）",
+        type=["json", "md"],
         accept_multiple_files=True,
-        key="json",
+        key="creative",
     )
 
 # ── Step 2: データ確認・紐付け ─────────────────────────────
-if excel_file and json_files:
+if excel_file and creative_files:
     st.header("Step 2: データ確認・紐付け")
 
     # Excel処理
@@ -123,11 +124,16 @@ if excel_file and json_files:
     st.caption(f"全 {len(df)} 行 / 広告 {len(ad_names)} 本 / "
                f"期間: {df['レポート開始日'].min().strftime('%Y/%m/%d')} 〜 {df['レポート開始日'].max().strftime('%Y/%m/%d')}")
 
-    # JSON処理
+    # クリエイティブファイル処理（JSON / MD 両対応）
     parsed_jsons = []
-    for jf in json_files:
-        content = json.load(jf)
-        parsed_jsons.append({"filename": jf.name, "content": content})
+    for cf in creative_files:
+        if cf.name.endswith(".md"):
+            md_text = cf.read().decode("utf-8")
+            md_results = parse_creative_md(md_text, cf.name)
+            parsed_jsons.extend(md_results)
+        else:
+            content = json.load(cf)
+            parsed_jsons.append({"filename": cf.name, "content": content})
 
     creatives = parse_creative_jsons(parsed_jsons)
 
@@ -135,6 +141,9 @@ if excel_file and json_files:
     for cr in creatives:
         with st.expander(f"📹 {cr['video_id']}（{cr['duration_sec']}秒 / {cr['creative_type']}）"):
             st.json(cr["_raw_json"])
+            if cr.get("_qualitative_text"):
+                st.markdown("**定性分析:**")
+                st.markdown(cr["_qualitative_text"][:500] + ("..." if len(cr["_qualitative_text"]) > 500 else ""))
 
     # 紐付けUI
     st.subheader("🔗 広告名 ↔ クリエイティブJSON の紐付け")
@@ -233,7 +242,7 @@ if excel_file and json_files:
         st.subheader("🤖 AI分析（Claude API）")
 
         if not api_key:
-            st.warning("サイドバーにClaude API Keyを入力してください")
+            st.warning("APIキーが設定されていません。管理者に連絡してください。")
             st.stop()
 
         kpi_text = build_kpi_text(summary)
@@ -275,8 +284,8 @@ if excel_file and json_files:
             )
 
 elif excel_file:
-    st.info("クリエイティブ分析JSON（Gemini出力）もアップロードしてください")
-elif json_files:
+    st.info("クリエイティブ分析ファイル（JSON or MD）もアップロードしてください")
+elif creative_files:
     st.info("パフォーマンスデータ（Excel/CSV）もアップロードしてください")
 else:
-    st.info("Excel（パフォーマンスデータ）と JSON（クリエイティブ分析）をアップロードしてください")
+    st.info("Excel（パフォーマンスデータ）と クリエイティブ分析（JSON or MD）をアップロードしてください")

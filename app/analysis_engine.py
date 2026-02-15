@@ -5,6 +5,7 @@
 
 import io
 import json
+import re
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -103,8 +104,81 @@ def parse_creative_jsons(json_files: list[dict]) -> list[dict]:
             "cta_duration_sec": cta_sec,
             "target_audience": summary.get("target_audience", ""),
             "_raw_json": data,
+            "_qualitative_text": jf.get("qualitative_text", ""),
         })
     return creatives
+
+
+def parse_creative_md(md_text: str, filename: str = "") -> list[dict]:
+    """
+    MDファイルからクリエイティブ情報を抽出する
+    1つのMDに複数クリエイティブが含まれる場合は分割して返す
+
+    Returns: [{"filename": ..., "content": {...}, "qualitative_text": "..."}, ...]
+    """
+    # ## N. で始まるセクションで分割
+    sections = re.split(r'(?=^## \d+\.)', md_text, flags=re.MULTILINE)
+
+    results = []
+    for section in sections:
+        # JSONブロックを抽出（{ で始まり } で終わるブロック）
+        json_blocks = []
+        brace_depth = 0
+        current_block = []
+        in_block = False
+
+        for line in section.split('\n'):
+            stripped = line.rstrip().rstrip(' ')
+            if not in_block and stripped.startswith('{'):
+                in_block = True
+                brace_depth = 0
+
+            if in_block:
+                current_block.append(line)
+                brace_depth += stripped.count('{') - stripped.count('}')
+                if brace_depth <= 0:
+                    block_text = '\n'.join(current_block)
+                    try:
+                        parsed = json.loads(block_text)
+                        if "video_id" in parsed:
+                            json_blocks.append(parsed)
+                    except json.JSONDecodeError:
+                        pass
+                    current_block = []
+                    in_block = False
+
+        if not json_blocks:
+            continue
+
+        # 定性テキスト抽出（JSONブロック以外の部分）
+        qualitative_parts = []
+        in_json = False
+        brace_depth = 0
+        for line in section.split('\n'):
+            stripped = line.rstrip().rstrip(' ')
+            if not in_json and stripped.startswith('{'):
+                in_json = True
+                brace_depth = 0
+            if in_json:
+                brace_depth += stripped.count('{') - stripped.count('}')
+                if brace_depth <= 0:
+                    in_json = False
+                continue
+            # JSONヘッダー行をスキップ
+            if stripped in ('JSON', '##') or stripped.startswith('**') and 'JSON' in stripped:
+                continue
+            qualitative_parts.append(line)
+
+        qualitative_text = '\n'.join(qualitative_parts).strip()
+
+        for json_data in json_blocks:
+            results.append({
+                "filename": filename,
+                "content": json_data,
+                "qualitative_text": qualitative_text,
+            })
+
+    return results
 
 
 def _parse_time(t: str) -> int:
