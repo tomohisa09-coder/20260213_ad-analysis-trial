@@ -8,20 +8,19 @@
 ## 📋 作業計画（To-Do List）
 
 ### Phase 1: アプリUI修正
-- [ ] サイドバーからAPIキー入力欄を削除（Secretsから自動取得に変更）
-- [ ] サイドバーからモデル選択を削除（Sonnet 4.5固定）
-- [ ] パスワード認証画面を追加（正しいパスワードを入力しないとアプリが使えない）
-- [ ] ローカルテスト確認
+- [x] サイドバーからAPIキー入力欄を削除（Secretsから自動取得に変更）
+- [x] サイドバーからモデル選択を削除（Sonnet 4.5固定）
+- [x] パスワード認証画面を追加（正しいパスワードを入力しないとアプリが使えない）
+- [x] ローカルテスト確認
 
 ### Phase 2: デプロイ設定ファイル作成
-- [ ] `requirements.txt` 作成（Streamlit Cloud用の依存パッケージ一覧）
-- [ ] `.streamlit/config.toml` 作成（テーマ・サーバー設定）
+- [x] `requirements.txt` 作成（Streamlit Cloud用の依存パッケージ一覧）
+- [x] `.streamlit/config.toml` 作成（テーマ・サーバー設定）
 
 ### Phase 3: GitHubプッシュ & デプロイ
-- [ ] 変更をコミット・プッシュ
-- [ ] Streamlit Community Cloudでのデプロイ手順をガイド
-  - Streamlit Cloud側の操作（Secrets設定含む）はブラウザGUIなのでユーザーが操作
-  - Claude Codeが手順を丁寧にガイドする
+- [x] 変更をコミット・プッシュ
+- [x] Streamlit Community Cloudでのデプロイ手順をガイド
+- [x] デプロイ完了（リポジトリをPublicに変更して対応）
 
 ## 🔧 技術詳細
 
