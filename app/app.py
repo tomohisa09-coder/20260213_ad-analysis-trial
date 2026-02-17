@@ -129,8 +129,15 @@ if excel_file and creative_files:
     for cf in creative_files:
         if cf.name.endswith(".md"):
             md_text = cf.read().decode("utf-8")
-            md_results = parse_creative_md(md_text, cf.name)
-            parsed_jsons.extend(md_results)
+            md_result = parse_creative_md(md_text, cf.name)
+            parsed_jsons.extend(md_result["results"])
+            # パース結果のフィードバック
+            st.info(
+                f"**{cf.name}**: {md_result['section_count']}セクション中 "
+                f"**{md_result['found_count']}件** のクリエイティブを検出"
+            )
+            for w in md_result["warnings"]:
+                st.warning(f"{cf.name}: {w}")
         else:
             content = json.load(cf)
             parsed_jsons.append({"filename": cf.name, "content": content})
