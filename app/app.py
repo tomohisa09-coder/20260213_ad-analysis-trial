@@ -124,18 +124,18 @@ if excel_file and creative_files:
     st.caption(f"全 {len(df)} 行 / 広告 {len(ad_names)} 本 / "
                f"期間: {df['レポート開始日'].min().strftime('%Y/%m/%d')} 〜 {df['レポート開始日'].max().strftime('%Y/%m/%d')}")
 
-    # クリエイティブファイル処理（JSON / MD 両対応）
+    # クリエイティブファイル処理（JSON / MD 両対応・1動画1ファイル）
     parsed_jsons = []
     for cf in creative_files:
         if cf.name.endswith(".md"):
             md_text = cf.read().decode("utf-8")
             md_result = parse_creative_md(md_text, cf.name)
-            parsed_jsons.extend(md_result["results"])
-            # パース結果のフィードバック
-            st.info(
-                f"**{cf.name}**: {md_result['section_count']}セクション中 "
-                f"**{md_result['found_count']}件** のクリエイティブを検出"
-            )
+            if md_result["ok"]:
+                parsed_jsons.append(md_result["result"])
+                vid = md_result["result"]["content"].get("video_id", "?")
+                st.success(f"**{cf.name}** → {vid}")
+            else:
+                st.error(f"**{cf.name}**: JSON検出失敗")
             for w in md_result["warnings"]:
                 st.warning(f"{cf.name}: {w}")
         else:

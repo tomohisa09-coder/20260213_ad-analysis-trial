@@ -109,39 +109,52 @@ def parse_creative_jsons(json_files: list[dict]) -> list[dict]:
     return creatives
 
 
-def _extract_json_blocks(text: str) -> tuple[list[dict], list[str]]:
+def _try_repair_json(block_text: str) -> str | None:
     """
-    テキストからJSONブロック（video_id を持つもの）を抽出する。
-    コードフェンス内JSON → 裸JSONブロック の順に検出。
+    不正なJSON値（Geminiが出力しがちなもの）を修復する。
+    修復できた場合は修復後テキストを返す。できなければNone。
+    """
+    repaired = re.sub(
+        r':\s*(\d+)（([^）]*)）',
+        r': "\1（\2）"',
+        block_text,
+    )
+    if repaired != block_text:
+        return repaired
+    return None
 
-    Returns: (json_blocks, warnings)
+
+def _find_first_json(text: str) -> tuple[dict | None, list[str]]:
     """
-    json_blocks: list[dict] = []
+    テキストから最初のJSONブロック（video_id 付き）を検出する。
+    不正JSONの自動修復も試みる。
+
+    Returns: (json_data or None, warnings)
+    """
     warnings: list[str] = []
 
-    # --- 1) コードフェンス内の JSON を抽出 ---
-    fenced = re.findall(
-        r'```(?:json)?\s*\n(.*?)```',
-        text,
-        flags=re.DOTALL,
-    )
-    for block in fenced:
-        block = block.strip()
+    # --- 1) コードフェンス内の JSON ---
+    for m in re.finditer(r'```(?:json)?\s*\n(.*?)```', text, flags=re.DOTALL):
+        block = m.group(1).strip()
         if not block.startswith('{'):
             continue
         try:
             parsed = json.loads(block)
             if "video_id" in parsed:
-                json_blocks.append(parsed)
-            else:
-                warnings.append(f"JSONブロック検出（video_id なし）: {block[:80]}...")
-        except json.JSONDecodeError as e:
-            warnings.append(f"JSON解析失敗（コードフェンス内）: {e}")
+                return parsed, warnings
+        except json.JSONDecodeError:
+            repaired = _try_repair_json(block)
+            if repaired:
+                try:
+                    parsed = json.loads(repaired)
+                    if "video_id" in parsed:
+                        warnings.append(f"JSON自動修復済み（不正な値を変換）")
+                        return parsed, warnings
+                except json.JSONDecodeError:
+                    pass
+            warnings.append(f"JSON解析失敗（コードフェンス内）")
 
-    if json_blocks:
-        return json_blocks, warnings
-
-    # --- 2) 裸の JSON ブロック（ブレースカウント方式） ---
+    # --- 2) 裸の JSON ブロック ---
     brace_depth = 0
     current_block: list[str] = []
     in_block = False
@@ -161,39 +174,40 @@ def _extract_json_blocks(text: str) -> tuple[list[dict], list[str]]:
                 try:
                     parsed = json.loads(block_text)
                     if "video_id" in parsed:
-                        json_blocks.append(parsed)
-                    else:
-                        warnings.append(f"JSONブロック検出（video_id なし）: {block_text[:80]}...")
-                except json.JSONDecodeError as e:
-                    warnings.append(f"JSON解析失敗: {e} — 先頭: {block_text[:80]}...")
+                        return parsed, warnings
+                except json.JSONDecodeError:
+                    repaired = _try_repair_json(block_text)
+                    if repaired:
+                        try:
+                            parsed = json.loads(repaired)
+                            if "video_id" in parsed:
+                                warnings.append(f"JSON自動修復済み（不正な値を変換）")
+                                return parsed, warnings
+                        except json.JSONDecodeError:
+                            pass
+                    warnings.append(f"JSON解析失敗")
                 current_block = []
                 in_block = False
 
-    # 閉じられなかったブロックの警告
-    if in_block and current_block:
-        warnings.append(f"閉じられていないJSONブロック: {current_block[0][:80]}...")
-
-    return json_blocks, warnings
+    return None, warnings
 
 
-def _extract_qualitative_text(section: str) -> str:
-    """セクションからJSONブロック以外の定性テキストを抽出する"""
+def _extract_qualitative_text(text: str) -> str:
+    """テキストからJSONブロック・ヘッダー類を除き定性テキストを抽出する"""
     qualitative_parts: list[str] = []
     in_json = False
     in_fence = False
     brace_depth = 0
 
-    for line in section.split('\n'):
+    for line in text.split('\n'):
         stripped = line.strip()
 
-        # コードフェンスのスキップ
         if stripped.startswith('```'):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
 
-        # 裸JSONブロックのスキップ
         if not in_json and stripped.startswith('{'):
             in_json = True
             brace_depth = 0
@@ -203,10 +217,12 @@ def _extract_qualitative_text(section: str) -> str:
                 in_json = False
             continue
 
-        # JSONヘッダー行をスキップ
+        # 無関係な行をスキップ
         if stripped in ('JSON', 'json', '##', ''):
             continue
         if stripped.startswith('**') and 'JSON' in stripped:
+            continue
+        if re.match(r'^#{1,3}\s+\d+[\.\)]\s.*JSON', stripped):
             continue
 
         qualitative_parts.append(line)
@@ -216,67 +232,32 @@ def _extract_qualitative_text(section: str) -> str:
 
 def parse_creative_md(md_text: str, filename: str = "") -> dict:
     """
-    MDファイルからクリエイティブ情報を抽出する
-    1つのMDに複数クリエイティブが含まれる場合は分割して返す
+    1動画1MDファイルからクリエイティブ情報を抽出する。
+    ファイル内の最初のJSONブロック（video_id付き）を検出し、
+    残りのテキストを定性分析として紐付ける。
 
     Returns: {
-        "results": [{"filename": ..., "content": {...}, "qualitative_text": "..."}, ...],
+        "result": {"filename": ..., "content": {...}, "qualitative_text": "..."} or None,
         "warnings": [...],
-        "section_count": int,  # MD内のセクション数
-        "found_count": int,    # 検出された動画数
+        "ok": bool,
     }
     """
-    all_warnings: list[str] = []
+    json_data, warnings = _find_first_json(md_text)
 
-    # --- セクション分割（複数パターン対応） ---
-    # ## N. / # N. / ### N. いずれも対応
-    section_pattern = r'(?=^#{1,3}\s+\d+[\.\)]\s)'
-    sections = re.split(section_pattern, md_text, flags=re.MULTILINE)
+    if json_data is None:
+        warnings.append("video_id を持つJSONブロックが見つかりません")
+        return {"result": None, "warnings": warnings, "ok": False}
 
-    # セクションヘッダーが見つからない場合はファイル全体を1セクションとして扱う
-    numbered_sections = [s for s in sections if re.match(r'^#{1,3}\s+\d+[\.\)]\s', s)]
-    if not numbered_sections:
-        all_warnings.append("番号付きセクション（## 1. 等）が見つかりません。ファイル全体からJSON検出を試みます。")
-        numbered_sections = [md_text]
-
-    section_count = len(numbered_sections)
-    results = []
-
-    for section in numbered_sections:
-        # セクション名を取得（最初の行）
-        first_line = section.split('\n', 1)[0].strip()
-
-        json_blocks, section_warnings = _extract_json_blocks(section)
-        all_warnings.extend(
-            f"[{first_line[:40]}] {w}" for w in section_warnings
-        )
-
-        if not json_blocks:
-            all_warnings.append(f"[{first_line[:40]}] JSONブロック（video_id付き）が見つかりません")
-            continue
-
-        qualitative_text = _extract_qualitative_text(section)
-
-        for json_data in json_blocks:
-            results.append({
-                "filename": filename,
-                "content": json_data,
-                "qualitative_text": qualitative_text,
-            })
-
-    found_count = len(results)
-
-    # 数の不一致チェック
-    if section_count != found_count:
-        all_warnings.append(
-            f"セクション数({section_count})と検出動画数({found_count})が一致しません"
-        )
+    qualitative_text = _extract_qualitative_text(md_text)
 
     return {
-        "results": results,
-        "warnings": all_warnings,
-        "section_count": section_count,
-        "found_count": found_count,
+        "result": {
+            "filename": filename,
+            "content": json_data,
+            "qualitative_text": qualitative_text,
+        },
+        "warnings": warnings,
+        "ok": True,
     }
 
 
