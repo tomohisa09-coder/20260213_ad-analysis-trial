@@ -7,60 +7,24 @@ from __future__ import annotations
 import io
 import json
 import re
-from typing import Optional
 
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 import matplotlib.ticker as mticker
 import matplotlib.patches as mpatches
 import seaborn as sns
+
+# 日本語フォント自動設定（IPAexGothicをバンドル）
+import matplotlib_fontja  # noqa: F401
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # スタイル設定
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-_font_initialized = False
-
-
-def _init_japanese_font():
-    """日本語フォントの初期設定（1回だけ実行）"""
-    global _font_initialized
-    if _font_initialized:
-        return
-    _font_initialized = True
-
-    # システムにインストールされたフォントを再スキャン
-    try:
-        fm._load_fontmanager(try_read_cache=False)
-    except Exception:
-        try:
-            fm.fontManager.__init__()
-        except Exception:
-            pass
-
-    # 利用可能な日本語フォントを探す
-    preferred = ["Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "IPAGothic"]
-    available_fonts = {f.name for f in fm.fontManager.ttflist}
-    jp_font = None
-    for name in preferred:
-        if name in available_fonts:
-            jp_font = name
-            break
-
-    if jp_font:
-        plt.rcParams["font.sans-serif"] = [jp_font, "DejaVu Sans", "sans-serif"]
-    else:
-        plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "sans-serif"]
-    plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["axes.unicode_minus"] = False
-
-
 def setup_style(font_size=14):
-    _init_japanese_font()
     sns.set_style("whitegrid")
     plt.rcParams["font.size"] = font_size
     plt.rcParams["figure.figsize"] = (16, 9)
