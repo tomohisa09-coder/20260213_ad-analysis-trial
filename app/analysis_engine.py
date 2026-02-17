@@ -26,6 +26,9 @@ import matplotlib_fontja  # noqa: F401
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def setup_style(font_size=14):
     sns.set_style("whitegrid")
+    # sns.set_style() がフォント設定を上書きするため、その後に再適用
+    plt.rcParams["font.family"] = "IPAexGothic"
+    plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["font.size"] = font_size
     plt.rcParams["figure.figsize"] = (16, 9)
     sns.set_palette("husl", 12)
