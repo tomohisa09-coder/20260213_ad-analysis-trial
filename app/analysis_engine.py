@@ -21,7 +21,12 @@ import seaborn as sns
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def setup_style(font_size=14):
     sns.set_style("whitegrid")
-    plt.rcParams["font.family"] = ["Hiragino Sans", "DejaVu Sans", "sans-serif"]
+    plt.rcParams["font.family"] = [
+        "Noto Sans CJK JP",   # Linux (Streamlit Cloud)
+        "Hiragino Sans",       # macOS
+        "DejaVu Sans",
+        "sans-serif",
+    ]
     plt.rcParams["font.size"] = font_size
     plt.rcParams["figure.figsize"] = (16, 9)
     sns.set_palette("husl", 12)
