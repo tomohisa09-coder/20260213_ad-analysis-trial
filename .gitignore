@@ -5,3 +5,4 @@ token.json
 .venv
 .vscode
 __pycache__/
+data/
